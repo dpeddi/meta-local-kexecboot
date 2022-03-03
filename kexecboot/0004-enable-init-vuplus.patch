@@ -1,0 +1,30 @@
+diff --git a/src/kexecboot.c b/src/kexecboot.c
+index 683cf51..0e464b2 100644
+--- a/src/kexecboot.c
++++ b/src/kexecboot.c
+@@ -30,6 +30,7 @@
+ #include <sys/reboot.h>
+ #include <sys/types.h>
+ #include <sys/stat.h>
++#include <fcntl.h>
+ 
+ #include "config.h"
+ #include "util.h"
+@@ -757,6 +758,17 @@ int do_init(void)
+ 		exit(-1);
+ 	}
+ 
++#ifdef USE_VUPLUS_STB
++	/* Mount sysfs */
++	mkdir("/tmp", 1777);
++	if ( -1 == mount("tmpfs", "/tmp", "tmpfs",
++			0, NULL) ) {
++		perror("Can't mount tmpfs");
++		exit(-1);
++	}
++	system("PATH=/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin /etc/init.d/vuplus-platform-util start");
++#endif
++
+ 	FILE *f;
+ 	/* Set up console loglevel */
+ 	f = fopen("/proc/sys/kernel/printk", "w");

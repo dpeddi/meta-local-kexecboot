@@ -1,0 +1,11 @@
+--- a/src/fb.c	2022-03-02 10:33:53.421667443 +0000
++++ b/src/fb.c	2022-03-02 10:33:11.285054864 +0000
+@@ -35,7 +35,7 @@
+ void blit()
+ {
+ 	if (g_manual_blit == 1) {
+-		if (ioctl(fb.fd, FBIO_BLIT) < 0)
++		if (ioctl(fb.fd, FBIO_BLIT, NULL) < 0)
+ 			perror("FBIO_BLIT");
+ 	}
+ }

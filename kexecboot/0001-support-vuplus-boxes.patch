@@ -1,0 +1,138 @@
+From f91f2e8a7edcf0d08a860b9bcda9b42f9c5dbb2c Mon Sep 17 00:00:00 2001
+From: dpeddi <eddi@dpeddi.com>
+Date: Tue, 1 Mar 2022 22:52:49 +0000
+Subject: [PATCH 1/2] support vuplus boxes
+
+---
+ src/evdevs.c |  1 +
+ src/fb.c     | 55 ++++++++++++++++++++++++++++++++++++++++++++++++----
+ 2 files changed, 52 insertions(+), 4 deletions(-)
+
+diff --git a/src/evdevs.c b/src/evdevs.c
+index d8b7241..d906ffb 100644
+--- a/src/evdevs.c
++++ b/src/evdevs.c
+@@ -318,6 +318,7 @@ int inputs_process_evdev(int fd)
+ 		case 63:			/* Zaurus: Enter (remove?) */
+ 		case KEY_END:		/* Motorola Mapphone devices (107) */
+ 		case KEY_POWER:		/* GTA02: Power (116) */
++		case 352: //vuplus ok	
+ 		case KEY_PHONE:		/* GTA02: AUX (169) */
+ 			action = A_SELECT;
+ 			break;
+diff --git a/src/fb.c b/src/fb.c
+index c68009f..23984df 100644
+--- a/src/fb.c
++++ b/src/fb.c
+@@ -24,6 +24,39 @@
+ 
+ #include "fb.h"
+ 
++#ifndef FBIO_BLIT
++#define FBIO_SET_MANUAL_BLIT _IOW('F', 0x21, __u8)
++#define FBIO_BLIT 0x22
++#endif
++
++int g_manual_blit = 0;
++
++void blit()
++{
++	if (g_manual_blit == 1) {
++		if (ioctl(fb.fd, FBIO_BLIT) < 0)
++			perror("FBIO_BLIT");
++	}
++}
++
++void enableManualBlit()
++{
++	unsigned char tmp = 1;
++	if (ioctl(fb.fd, FBIO_SET_MANUAL_BLIT, &tmp)<0)
++		perror("FBIO_SET_MANUAL_BLIT");
++	else
++		g_manual_blit = 1;
++}
++
++void disableManualBlit()
++{
++	unsigned char tmp = 0;
++	if (ioctl(fb.fd, FBIO_SET_MANUAL_BLIT, &tmp)<0)
++		perror("FBIO_SET_MANUAL_BLIT");
++	else
++		g_manual_blit = 0;
++}
++
+ 
+ static unsigned int compose_color (kx_rgba rgba) {
+ 
+@@ -70,6 +103,7 @@ static unsigned int compose_color (kx_rgba rgba) {
+ 	}
+ 
+ 	/* add alpha channel */
++	if ( a == 0) a = 255;
+ 	color = (a << 24) | color;
+ 
+ 	return color;
+@@ -358,6 +392,7 @@ static inline int fb_quirk_check_manual_update(void)
+ }
+ static inline void fb_quirk_manual_update(void)
+ {
++blit();
+ }
+ #endif
+ 
+@@ -409,9 +444,9 @@ void fb_destroy()
+  */
+ int clear_virtual(struct fb_var_screeninfo *fb_var)
+ {
+-	if (fb_var->xres_virtual == fb_var->xres &&
+-	    fb_var->yres_virtual == fb_var->yres)
+-		return 0;
++//	if (fb_var->xres_virtual == fb_var->xres &&
++//	    fb_var->yres_virtual == fb_var->yres)
++//		return 0;
+ 
+ 	fb_var->xres_virtual = fb_var->xres;
+ 	fb_var->yres_virtual = fb_var->yres;
+@@ -514,11 +549,22 @@ int fb_new(int angle)
+ 		goto fail;
+ 	}
+ 
++	enableManualBlit();
++
+ 	if (ioctl(fb.fd, FBIOGET_VSCREENINFO, &fb_var) == -1) {
+ 		log_msg(lg, "Error getting variable framebuffer info: %s", ERRMSG);
+ 		goto fail;
+ 	}
+ 
++//	fb_var.xres_virtual = fb_var.xres = 1280;
++//	fb_var.yres_virtual = fb_var.yres = 720;
++	fb_var.xres_virtual = fb_var.xres = 768;
++	fb_var.yres_virtual = fb_var.yres = 576;
++	fb_var.bits_per_pixel = 32;
++	fb_var.xoffset = fb_var.yoffset = 0;
++	fb_var.height = 0;
++	fb_var.width = 0;
++
+ 	if (clear_virtual(&fb_var))
+ 	{
+ 		log_msg(lg, "Could not clear virtual resolution\n");
+@@ -578,7 +624,7 @@ int fb_new(int angle)
+ 		fb.rgbmode = GENERIC;
+ 	}
+ 
+-	if (fb_quirk_check_manual_update())
++//	if (fb_quirk_check_manual_update())
+ 		fb.needs_manual_update = 1;
+ 
+ 	fb.base = (char *) mmap((caddr_t) NULL,
+@@ -713,6 +759,7 @@ void fb_draw_rounded_rect(int x, int y, int width, int height,
+ 	/* Bottom rounded part */
+ 	fb.draw_hline(x+1, dy++, width-2, color);
+ 	fb.draw_hline(x+2, dy++, width-4, color);
++
+ }
+ 
+ 
+-- 
+2.25.1
+

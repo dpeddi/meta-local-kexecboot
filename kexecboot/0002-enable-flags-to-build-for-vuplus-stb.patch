@@ -1,0 +1,179 @@
+From 893ab6bf3e9a9a5ee965be0f09ab6cd3e57eed0f Mon Sep 17 00:00:00 2001
+From: dpeddi <eddi@dpeddi.com>
+Date: Tue, 1 Mar 2022 23:07:46 +0000
+Subject: [PATCH 2/2] enable flags to build for vuplus stb
+
+---
+ configure.ac |  7 +++++++
+ src/evdevs.c |  2 +-
+ src/fb.c     | 31 +++++++++++++++++++++++++------
+ 3 files changed, 33 insertions(+), 7 deletions(-)
+
+diff --git a/configure.ac b/configure.ac
+index 81c7698..1506c85 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -23,6 +23,7 @@ AC_ARG_ENABLE([host-debug],[AS_HELP_STRING([--enable-host-debug],[allow for non-
+ AC_ARG_ENABLE([bg-buffer],[AS_HELP_STRING([--enable-bg-buffer],[enable special buffer to hold pre-drawed FB GUI background @<:@default=no@:>@])], [],[enable_bg_buffer=no])
+ AC_ARG_ENABLE([numkeys],[AS_HELP_STRING([--enable-numkeys],[allow to choose menu item by 0-9 keys @<:@default=yes@:>@])], [],[enable_numkeys=yes])
+ AC_ARG_ENABLE([devtmpfs],[AS_HELP_STRING([--enable-devtmpfs],[mount devtmpfs at startup in init-mode @<:@default=yes@:>@])], [],[enable_devtmpfs=yes])
++AC_ARG_ENABLE([vuplus-stb],[AS_HELP_STRING([--enable-vuplus-stb],[support framebuffer of vuplus stb @<:@default=no@:>@])],[],[enable_vuplus_stb=no])
+ 
+ AC_ARG_ENABLE([timeout],[AS_HELP_STRING([--enable-timeout@<:@=sec@:>@],[allow to boot 1st kernel after timeout in seconds @<:@default=no@:>@])], [
+ 	test "x$enable_timeout" = xyes && enable_timeout=10
+@@ -275,6 +276,12 @@ AS_IF([test "x$enable_ubi_vid_hdr_offset" != "xno"],
+ 		AC_DEFINE_UNQUOTED([UBI_VID_HDR_OFFSET], ["${enable_ubi_vid_hdr_offset}"], [UBI VID header offset])
+ 		], [])
+ 
++AS_IF([test "x$enable_vuplus_stb" != xno],
++		[
++		AC_DEFINE([USE_VUPLUS_STB], [1],[Define if you want to compile for vuplus stb])
++		], [])
++
++
+ AC_ISC_POSIX
+ AC_PROG_CC
+ AC_STDC_HEADERS
+diff --git a/src/evdevs.c b/src/evdevs.c
+index d906ffb..d0b8a62 100644
+--- a/src/evdevs.c
++++ b/src/evdevs.c
+@@ -318,7 +318,7 @@ int inputs_process_evdev(int fd)
+ 		case 63:			/* Zaurus: Enter (remove?) */
+ 		case KEY_END:		/* Motorola Mapphone devices (107) */
+ 		case KEY_POWER:		/* GTA02: Power (116) */
+-		case 352: //vuplus ok	
++		case 352:               /* VU+  : OK        */	
+ 		case KEY_PHONE:		/* GTA02: AUX (169) */
+ 			action = A_SELECT;
+ 			break;
+diff --git a/src/fb.c b/src/fb.c
+index 23984df..e4464eb 100644
+--- a/src/fb.c
++++ b/src/fb.c
+@@ -24,6 +24,7 @@
+ 
+ #include "fb.h"
+ 
++#ifdef USE_VUPLUS_STB
+ #ifndef FBIO_BLIT
+ #define FBIO_SET_MANUAL_BLIT _IOW('F', 0x21, __u8)
+ #define FBIO_BLIT 0x22
+@@ -39,6 +40,7 @@ void blit()
+ 	}
+ }
+ 
++
+ void enableManualBlit()
+ {
+ 	unsigned char tmp = 1;
+@@ -48,6 +50,7 @@ void enableManualBlit()
+ 		g_manual_blit = 1;
+ }
+ 
++
+ void disableManualBlit()
+ {
+ 	unsigned char tmp = 0;
+@@ -56,6 +59,7 @@ void disableManualBlit()
+ 	else
+ 		g_manual_blit = 0;
+ }
++#endif
+ 
+ 
+ static unsigned int compose_color (kx_rgba rgba) {
+@@ -103,7 +107,9 @@ static unsigned int compose_color (kx_rgba rgba) {
+ 	}
+ 
+ 	/* add alpha channel */
++#ifdef USE_VUPLUS_STB
+ 	if ( a == 0) a = 255;
++#endif
+ 	color = (a << 24) | color;
+ 
+ 	return color;
+@@ -385,6 +391,15 @@ static void fb_quirk_manual_update(void)
+ 	ioctl(fb.fd, OMAPFB_SYNC_GFX);
+ }
+ 
++#elif defined(USE_VUPLUS_STB)
++static inline int fb_quirk_check_manual_update(void)
++{
++	return 1;
++}
++static inline void fb_quirk_manual_update(void)
++{
++blit();
++}
+ #else
+ static inline int fb_quirk_check_manual_update(void)
+ {
+@@ -392,7 +407,6 @@ static inline int fb_quirk_check_manual_update(void)
+ }
+ static inline void fb_quirk_manual_update(void)
+ {
+-blit();
+ }
+ #endif
+ 
+@@ -444,9 +458,11 @@ void fb_destroy()
+  */
+ int clear_virtual(struct fb_var_screeninfo *fb_var)
+ {
+-//	if (fb_var->xres_virtual == fb_var->xres &&
+-//	    fb_var->yres_virtual == fb_var->yres)
+-//		return 0;
++#ifndef USE_VUPLUS_STB
++	if (fb_var->xres_virtual == fb_var->xres &&
++	    fb_var->yres_virtual == fb_var->yres)
++		return 0;
++#endif
+ 
+ 	fb_var->xres_virtual = fb_var->xres;
+ 	fb_var->yres_virtual = fb_var->yres;
+@@ -549,13 +565,16 @@ int fb_new(int angle)
+ 		goto fail;
+ 	}
+ 
++#ifdef USE_VUPLUS_STB
+ 	enableManualBlit();
++#endif
+ 
+ 	if (ioctl(fb.fd, FBIOGET_VSCREENINFO, &fb_var) == -1) {
+ 		log_msg(lg, "Error getting variable framebuffer info: %s", ERRMSG);
+ 		goto fail;
+ 	}
+ 
++#ifdef USE_VUPLUS_STB
+ //	fb_var.xres_virtual = fb_var.xres = 1280;
+ //	fb_var.yres_virtual = fb_var.yres = 720;
+ 	fb_var.xres_virtual = fb_var.xres = 768;
+@@ -564,6 +583,7 @@ int fb_new(int angle)
+ 	fb_var.xoffset = fb_var.yoffset = 0;
+ 	fb_var.height = 0;
+ 	fb_var.width = 0;
++#endif
+ 
+ 	if (clear_virtual(&fb_var))
+ 	{
+@@ -624,7 +644,7 @@ int fb_new(int angle)
+ 		fb.rgbmode = GENERIC;
+ 	}
+ 
+-//	if (fb_quirk_check_manual_update())
++	if (fb_quirk_check_manual_update())
+ 		fb.needs_manual_update = 1;
+ 
+ 	fb.base = (char *) mmap((caddr_t) NULL,
+@@ -759,7 +779,6 @@ void fb_draw_rounded_rect(int x, int y, int width, int height,
+ 	/* Bottom rounded part */
+ 	fb.draw_hline(x+1, dy++, width-2, color);
+ 	fb.draw_hline(x+2, dy++, width-4, color);
+-
+ }
+ 
+ 
+-- 
+2.25.1
+
